@@ -43,6 +43,23 @@ function func_update_permaLinkstructure() {
         }
       }   
 }
+register_deactivation_hook(__FILE__, 'func_no_more_category_setback_original');
+
+function func_no_more_category_setback_original() {
+    $rules = get_option( 'rewrite_rules' );
+    unset($rules['(.+)/(.+)/(.+)$']);
+    global $wp_rewrite;
+    
+    $option_name = 'permalink_structure' ;
+    $new_value = '/%postname%/' ;
+
+    if ( get_option( $option_name ) != $new_value ) {
+        update_option( $option_name, $new_value );
+        $wp_rewrite->set_category_base("");
+    }
+    
+    $wp_rewrite->flush_rules();
+}
 
 add_action('init', 'func_no_more_category_in_url');
 
@@ -51,6 +68,7 @@ function func_no_more_category_in_url() {
     
     if(strpos($uri,"category/")) {
         $uri = str_replace("category/", '', $uri);
+        header("HTTP/1.1 301 Moved Permanently"); 
         header("Location: ".site_url().$uri);
         exit;
     }
@@ -84,3 +102,36 @@ function remove_category_from_permalink( $catlink, $category_id )
     }
     return $catlink;
 }
+
+
+add_action( 'wp_loaded','func_no_catgory__flush_rules' );
+// flush_rules() if our rules are not yet included
+function func_no_catgory__flush_rules(){
+	$rules = get_option( 'rewrite_rules' );
+	if ( ! isset( $rules['(.+)/(.+)/(.+)$'] ) ) {
+		global $wp_rewrite;
+	   	$wp_rewrite->flush_rules();
+	}
+}
+add_filter( 'rewrite_rules_array','func_no_catgory_insert_rewrite_rules' );
+// Adding a new rule
+function func_no_catgory_insert_rewrite_rules( $rules )
+{
+	$newrules = array();
+	$newrules['(.+)/(.+)/(.+)$'] = 'index.php?category_name=$matches[0]&paged=$matches[2]';
+	return $newrules + $rules;
+}
+
+function func_no_catgory_fix_pagination( $query ) {
+   $ARR_url = explode("/", $_SERVER['REQUEST_URI']);
+   if(count($ARR_url) >= 4 && in_array('page', $ARR_url)) {
+      // var_dump($ARR_url);
+       $idObj = get_category_by_slug($ARR_url[1]);
+       if(!empty($idObj)) {
+           $query->set( 'category_name', $ARR_url[1] );
+           $query->set( 'paged', $ARR_url[3] );
+       }
+   }
+   
+}
+add_action( 'pre_get_posts', 'func_no_catgory_fix_pagination', 1 );
